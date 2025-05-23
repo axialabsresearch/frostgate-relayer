@@ -15,3 +15,8 @@ ethers = { workspace = true }
 solana-client = { workspace = true }
 base64 = { workspace = true }
 uuid = { workspace = true }
+async-trait.workspace = true
+solana-sdk = "2.2.2"
+solana-transaction-status = "2.2.7"
+log = "0.4.27"
+thiserror.workspace = true
