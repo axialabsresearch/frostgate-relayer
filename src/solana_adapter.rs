@@ -436,10 +436,19 @@ impl ChainAdapter for SolanaAdapter {
             }
             Err(SolanaAdapterError::RpcClient(ClientError { 
                 kind: ClientErrorKind::RpcError(rpc_error), .. 
-            })) if rpc_error.code == -32602 => {
-                // Transaction not found
-                debug!("Transaction not found: {}", tx_id);
-                Ok(None)
+            })) => {
+                if let solana_client::rpc_request::RpcError::RpcResponseError { code, .. } = rpc_error {
+                    if code == -32603 {
+                        debug!("Transaction not found: {}", tx_id);
+                        return Ok(None);
+                    } else {
+                        debug!("Unhandled Solana RPC error code {} for tx {}", code, tx_id);
+                        // Falls through to the generic error below
+                    }
+                }
+                // If not handled above, treat as a network error
+                error!("Failed to fetch transaction {}: {:?}", tx_id, rpc_error);
+                Err(AdapterError::Network(format!("Transaction fetch error: {:?}", rpc_error)))
             }
             Err(e) => {
                 error!("Failed to fetch transaction {}: {:?}", tx_id, e);

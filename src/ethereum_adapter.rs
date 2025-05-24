@@ -31,9 +31,11 @@
 //!                        └──────────────────┘
 //! ```
 
-#[allow(unused_imports)]
-#[allow(unused_variables)]
-#[allow(dead_code)]
+#![allow(private_interfaces)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(dead_code)]
 
 use frostgate_sdk::{
     ChainAdapter, FrostMessage, AdapterError, MessageEvent, MessageStatus
@@ -108,7 +110,7 @@ struct CachedTransaction {
 }
 
 /// Connection health metrics
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct HealthMetrics {
     /// Last successful RPC call timestamp
     pub last_successful_call: Option<Instant>,
@@ -286,11 +288,11 @@ impl EthereumAdapter {
     /// # Returns
     ///
     /// * `Result<T, AdapterError>` - Operation result or network error
-    async fn execute_rpc_call<T, F, Fut>(&self, operation: F) -> Result<T, AdapterError>
+    async fn execute_rpc_call<T, F, Fut>(&self, mut operation: F) -> Result<T, AdapterError>
     where
-        F: FnOnce() -> Fut,
+        F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T, ProviderError>>,
-    {
+        {
         // Rate limiting
         self.enforce_rate_limit().await;
         
@@ -573,7 +575,7 @@ impl ChainAdapter for EthereumAdapter {
     #[instrument(skip(self), fields(target_block = %block))]
     async fn wait_for_finality(&self, block: &Self::BlockId) -> Result<(), Self::Error> {
         let confirmations = self.config.confirmations.unwrap_or(DEFAULT_CONFIRMATIONS);
-        let target_block = *block + confirmations.into();
+        let target_block = *block + U64::from(confirmations);
 
         info!("Waiting for block {} to reach finality (target: {})", block, target_block);
 
@@ -767,7 +769,7 @@ impl ChainAdapter for EthereumAdapter {
             // Check transaction status
             let receipt = self.execute_rpc_call(|| async {
                 self.client.get_transaction_receipt(tx_hash).await
-            }).await.ok();
+            }).await?;
 
             if let Some(receipt) = receipt {
                 // Check if transaction was successful
@@ -911,7 +913,7 @@ impl EthereumAdapter {
         
         // Submit transaction
         let pending_tx = self.execute_rpc_call(|| async {
-            self.client.send_transaction(tx, None).await
+            self.client.send_transaction(tx.clone(), None).await
         }).await?;
         
         Ok(pending_tx.tx_hash())
@@ -970,7 +972,7 @@ impl EthereumAdapter {
         // Create new transaction with higher gas price
         let new_gas_price = U256::from((original_tx.gas_price.unwrap_or_default().as_u128() as f64 * gas_price_multiplier) as u128);
         
-        let mut new_tx = TypedTransaction::Legacy(TransactionRequest {
+        let new_tx = TypedTransaction::Legacy(TransactionRequest {
             from: Some(original_tx.from),
             to: original_tx.to.map(|addr| addr.into()),
             value: Some(original_tx.value),
