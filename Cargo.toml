@@ -23,6 +23,7 @@ thiserror.workspace = true
 tracing = "0.1.41"
 bincode.workspace = true
 reqwest = "0.11"
+subxt = "0.42.1"
 
 [features]
 examples = []
