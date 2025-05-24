@@ -37,7 +37,7 @@
 #![allow(unused_mut)]
 #![allow(dead_code)]
 
-use frostgate_sdk::{
+use frostgate_sdk::chainadapter::{
     ChainAdapter, FrostMessage, AdapterError, MessageEvent, MessageStatus
 };
 use ethers::types::transaction::eip2718::TypedTransaction;

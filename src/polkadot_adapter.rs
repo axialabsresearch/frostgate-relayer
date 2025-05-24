@@ -63,7 +63,7 @@
 //! }
 //! ```
 
-use frostgate_sdk::{
+use frostgate_sdk::chainadapter::{
     ChainAdapter, FrostMessage, AdapterError, MessageEvent, MessageStatus,
 };
 use async_trait::async_trait;
