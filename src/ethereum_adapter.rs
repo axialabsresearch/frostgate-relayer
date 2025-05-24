@@ -31,21 +31,28 @@
 //!                        └──────────────────┘
 //! ```
 
+#[allow(unused_imports)]
+#[allow(unused_variables)]
+#[allow(dead_code)]
+
 use frostgate_sdk::{
     ChainAdapter, FrostMessage, AdapterError, MessageEvent, MessageStatus
 };
+use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::prelude::*;
 use uuid::Uuid;
 use async_trait::async_trait;
 use std::{
     collections::HashMap,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 use std::sync::Arc;
 use tokio::sync::{RwLock, Mutex};
 use tokio::time::{sleep, timeout};
 use tracing::{info, warn, error, debug, instrument};
 use serde::{Deserialize, Serialize};
+use reqwest::{Client, Url};
+
 
 /// Default number of confirmations required for finality on Ethereum mainnet
 const DEFAULT_CONFIRMATIONS: u64 = 12;
@@ -183,13 +190,23 @@ impl EthereumAdapter {
         
         // Create HTTP provider with timeout
         let timeout_duration = config.rpc_timeout.unwrap_or(DEFAULT_RPC_TIMEOUT);
-        let client = Provider::<Http>::try_from(&config.rpc_url)
-            .map_err(|e| {
-                error!("Failed to create provider: {}", e);
-                AdapterError::Configuration(format!("Invalid RPC URL '{}': {}", config.rpc_url, e))
-            })?
-            .interval(Duration::from_millis(100)) // Polling interval for pending transactions
-            .timeout(timeout_duration);
+
+        // Build a reqwest client with timeout
+        let reqwest_client = Client::builder()
+            .timeout(timeout_duration)
+            .build()
+            .map_err(|e| AdapterError::Other(format!("Failed to build HTTP client: {e}")))?;
+
+        // Parse the URL
+        let rpc_url = Url::parse(&config.rpc_url)
+            .map_err(|e| AdapterError::Other(format!("Invalid RPC URL '{}': {}", config.rpc_url, e)))?;
+
+        // Build the ethers Http provider with the custom client
+        let http = Http::new_with_client(rpc_url, reqwest_client);
+
+        // Pass it to Provider and set the polling interval
+        let client = Provider::new(http)
+            .interval(Duration::from_millis(100));
         
         let adapter = Self {
             client: Arc::new(client),
@@ -300,10 +317,8 @@ impl EthereumAdapter {
                 }
                 Err(_) => {
                     warn!("RPC call timed out on attempt {}", attempt + 1);
-                    last_error = Some(ProviderError::Http(reqwest::Error::from(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Request timed out"
-                    ))));
+                    let error_msg = "Request timed out".to_string();
+                    return Err(AdapterError::Network(error_msg));
                 }
             }
         }
@@ -321,14 +336,14 @@ impl EthereumAdapter {
     
     /// Enforces rate limiting between RPC calls
     async fn enforce_rate_limit(&self) {
-        let mut last_call = self.last_rpc_call.lock().await();
+        let mut last_call = self.last_rpc_call.lock().await;
         if let Some(last_time) = *last_call {
             let elapsed = last_time.elapsed();
             if elapsed < self.min_call_interval {
                 let sleep_duration = self.min_call_interval - elapsed;
                 drop(last_call); // Release lock before sleeping
                 sleep(sleep_duration).await;
-                last_call = self.last_rpc_call.lock().await();
+                last_call = self.last_rpc_call.lock().await;
             }
         }
         *last_call = Some(Instant::now());
@@ -336,7 +351,7 @@ impl EthereumAdapter {
     
     /// Updates success metrics after a successful RPC call
     async fn update_success_metrics(&self, response_time: Duration) {
-        let mut metrics = self.health_metrics.lock().await();
+        let mut metrics = self.health_metrics.lock().await;
         metrics.last_successful_call = Some(Instant::now());
         metrics.consecutive_failures = 0;
         metrics.total_calls += 1;
@@ -354,7 +369,7 @@ impl EthereumAdapter {
     
     /// Updates failure metrics after a failed RPC call
     async fn update_failure_metrics(&self) {
-        let mut metrics = self.health_metrics.lock().await();
+        let mut metrics = self.health_metrics.lock().await;
         metrics.consecutive_failures += 1;
         metrics.total_calls += 1;
         metrics.failed_calls += 1;
@@ -450,8 +465,8 @@ impl EthereumAdapter {
     
     /// Cleans up old pending transactions that are likely dropped or confirmed
     async fn cleanup_stale_transactions(&self) {
-        let mut pending = self.pending_transactions.write().await();
-        let mut mapping = self.message_tx_mapping.write().await();
+        let mut pending = self.pending_transactions.write().await;
+        let mut mapping = self.message_tx_mapping.write().await;
         
         let stale_threshold = Duration::from_secs(300); // 5 minutes
         let now = Instant::now();
@@ -623,8 +638,8 @@ impl ChainAdapter for EthereumAdapter {
 
         // Store transaction mapping
         {
-            let mut pending = self.pending_transactions.write().await();
-            let mut mapping = self.message_tx_mapping.write().await();
+            let mut pending = self.pending_transactions.write().await;
+            let mut mapping = self.message_tx_mapping.write().await;
 
             pending.insert(dummy_tx_hash, cached_tx);
             mapping.insert(msg.id, dummy_tx_hash);
@@ -744,7 +759,7 @@ impl ChainAdapter for EthereumAdapter {
 
         // Check if we have a pending transaction for this message
         let tx_hash = {
-            let mapping = self.message_tx_mapping.read().await();
+            let mapping = self.message_tx_mapping.read().await;
             mapping.get(id).copied()
         };
 
@@ -756,7 +771,7 @@ impl ChainAdapter for EthereumAdapter {
 
             if let Some(receipt) = receipt {
                 // Check if transaction was successful
-                if receipt.status == Some(U64::from(1)) {
+                 if receipt.status == Some(U64::from(1)){
                     // Check for required confirmations
                     if let Some(block_number) = receipt.block_number {
                         let current_block = self.execute_rpc_call(|| async {
@@ -774,7 +789,7 @@ impl ChainAdapter for EthereumAdapter {
                     }
                 } else {
                     // Transaction failed
-                    return Ok(MessageStatus::Failed);
+                    return Ok(MessageStatus::Failed("reason".to_string()));
                 }
             } else {
                 // Transaction not yet mined
@@ -810,7 +825,8 @@ impl EthereumAdapter {
     ///
     /// * `HealthMetrics` - Current health and performance metrics
     pub async fn get_health_metrics(&self) -> HealthMetrics {
-        self.health_metrics.lock().await().clone()
+        let guard = self.health_metrics.lock().await;
+        guard.clone() 
     }
     
     /// Returns the number of pending transactions
@@ -819,7 +835,7 @@ impl EthereumAdapter {
     ///
     /// * `usize` - Count of currently pending transactions
     pub async fn pending_transaction_count(&self) -> usize {
-        self.pending_transactions.read().await().len()
+        self.pending_transactions.read().await.len()
     }
     
     /// Manually triggers cleanup of stale transactions
@@ -957,7 +973,7 @@ impl EthereumAdapter {
         let mut new_tx = TypedTransaction::Legacy(TransactionRequest {
             from: Some(original_tx.from),
             to: original_tx.to.map(|addr| addr.into()),
-            value: Solme(original_tx.value),
+            value: Some(original_tx.value),
             gas: Some(original_tx.gas),
             gas_price: Some(new_gas_price),
             data: Some(original_tx.input),
