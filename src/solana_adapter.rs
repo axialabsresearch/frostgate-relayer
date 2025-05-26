@@ -1,41 +1,4 @@
-//! # SolanaAdapter: Frostgate ChainAdapter for Solana Chains
-//!
-//! ```text
-//! ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-//! │   Frostgate     │───▶│  SolanaAdapter   │───▶│   Solana        │
-//! │   Protocol      │    │                  │    │   Network       │
-//! │                 │◀───│  - Tx Management │◀───│                 │
-//! └─────────────────┘    │  - Event Listen  │    │  - Mainnet      │
-//!                        │  - Proof Verify  │    │  - Devnet       │
-//!                        │  - Fee Estimate  │    │  - Testnet      │
-//!                        │  - Health Check  │    │  - Localnet     │
-//!                        └──────────────────┘    └─────────────────┘
-//! ```
-//!
-//! This module provides an implementation of the ChainAdapter trait
-//! for Solana blockchain integration. It handles message submission, event listening,
-//! transaction verification, and finality confirmation with sufficient error handling
-//! and comprehensive logging.
-//!
-//! ## Features
-//! - Configurable RPC client with retry mechanisms
-//! - Comprehensive error handling and logging
-//! - Finality confirmation with customizable timeouts
-//! - Fee estimation with fallback mechanisms
-//! - Health monitoring and connection validation
-//! - Event filtering and message status tracking
-//!
-//! ## Usage
-//! ```rust
-//! use solana_adapter::{SolanaAdapter, SolanaConfig};
-//! 
-//! let config = SolanaConfig::builder()
-//!     .rpc_url("https://api.mainnet-beta.solana.com")
-//!     .relayer_pubkey(relayer_key)
-//!     .build()?;
-//! 
-//! let adapter = SolanaAdapter::new(config)?;
-//! ```
+// SolanaAdapter: Frostgate ChainAdapter for Solana Chains
 
 #![allow(unused_imports)]
 #![allow(dead_code)]
@@ -43,7 +6,7 @@
 #![allow(unused_mut)]
 
 
-use frostgate_sdk::{
+use frostgate_sdk::chainadapter::{
     ChainAdapter, FrostMessage, AdapterError, MessageEvent, MessageStatus
 };
 use solana_client::{
@@ -244,23 +207,6 @@ pub struct SolanaAdapter {
 
 impl SolanaAdapter {
     /// Create a new SolanaAdapter instance
-    /// 
-    /// # Arguments
-    /// * `config` - Configuration parameters for the adapter
-    /// 
-    /// # Returns
-    /// * `Result<Self, SolanaAdapterError>` - New adapter instance or configuration error
-    /// 
-    /// # Examples
-    /// ```rust
-    /// let config = SolanaConfig::builder()
-    ///     .rpc_url("https://api.devnet.solana.com")
-    ///     .relayer_pubkey(my_pubkey)
-    ///     .build()?;
-    /// let adapter = SolanaAdapter::new(config)?;
-    /// // Perform a health check after initialization
-    /// adapter.health_check().await?;
-    /// ```
     pub fn new(config: SolanaConfig) -> Result<Self, SolanaAdapterError> {
         info!("Initializing SolanaAdapter with RPC URL: {}", config.rpc_url);
         
@@ -288,14 +234,6 @@ impl SolanaAdapter {
     }
     
     /// Execute an operation with retry logic
-    /// 
-    /// # Arguments
-    /// * `operation` - Closure that performs the operation
-    /// * `operation_name` - Name of the operation for logging
-    /// 
-    /// # Returns
-    /// * `Result<T, SolanaAdapterError>` - Operation result or error after all retries
-    /// Execute an async operation with retry logic
     async fn with_retry<T, Fut, F>(&self, mut operation: F, operation_name: &str) -> Result<T, SolanaAdapterError>
     where
         F: FnMut() -> Fut,
@@ -379,9 +317,6 @@ impl ChainAdapter for SolanaAdapter {
     type Error = AdapterError;
 
     /// Get the latest finalized block slot
-    /// 
-    /// # Returns
-    /// * `Result<Self::BlockId, Self::Error>` - Latest block slot or network error
     async fn latest_block(&self) -> Result<Self::BlockId, Self::Error> {
         debug!("Fetching latest block slot");
         let slot = self.with_retry(
@@ -396,12 +331,6 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     /// Retrieve transaction data by signature
-    /// 
-    /// # Arguments
-    /// * `tx_id` - Transaction signature as string
-    /// 
-    /// # Returns
-    /// * `Result<Option<Vec<u8>>, Self::Error>` - Serialized transaction data or None if not found
     async fn get_transaction(&self, tx_id: &Self::TxId) -> Result<Option<Vec<u8>>, Self::Error> {
         debug!("Fetching transaction: {}", tx_id);
         let signature = Self::parse_signature(tx_id)
@@ -458,12 +387,6 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     /// Wait for a block to reach finality
-    /// 
-    /// # Arguments
-    /// * `block` - Block slot to wait for
-    /// 
-    /// # Returns
-    /// * `Result<(), Self::Error>` - Success or timeout/network error
     async fn wait_for_finality(&self, block: &Self::BlockId) -> Result<(), Self::Error> {
         info!("Waiting for finality of block slot: {}", block);
 
@@ -498,12 +421,6 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     /// Submit a FrostMessage to the Solana blockchain
-    /// 
-    /// # Arguments
-    /// * `msg` - The FrostMessage to submit
-    /// 
-    /// # Returns
-    /// * `Result<Self::TxId, Self::Error>` - Transaction signature or submission error
     /// 
     /// # Note
     /// This is a stub implementation. In production, you would:
@@ -547,12 +464,9 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     /// Listen for and return relevant blockchain events
-    /// 
-    /// # Returns
-    /// * `Result<Vec<MessageEvent>, Self::Error>` - List of events or network error
-    /// 
+    ///
     /// # Note
-    /// This stub implementation returns empty events. In production, you would:
+    /// This stub implementation returns empty events. In production, we would:
     /// 1. Subscribe to program logs or account changes
     /// 2. Parse relevant events from transaction logs
     /// 3. Filter events related to FrostMessages
@@ -577,14 +491,8 @@ impl ChainAdapter for SolanaAdapter {
 
     /// Verify a FrostMessage exists and is valid on-chain
     /// 
-    /// # Arguments
-    /// * `msg` - The FrostMessage to verify
-    /// 
-    /// # Returns
-    /// * `Result<(), Self::Error>` - Success or verification failure
-    /// 
     /// # Note
-    /// This stub implementation always succeeds. In production, you would:
+    /// This stub implementation always succeeds. In production, we would:
     /// 1. Query the on-chain verifier program
     /// 2. Check message integrity and authenticity
     /// 3. Validate cryptographic proofs
@@ -604,12 +512,6 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     /// Estimate transaction fee for submitting a FrostMessage
-    /// 
-    /// # Arguments
-    /// * `msg` - The FrostMessage to estimate fees for
-    /// 
-    /// # Returns
-    /// * `Result<u128, Self::Error>` - Estimated fee in lamports or estimation error
     async fn estimate_fee(&self, msg: &FrostMessage) -> Result<u128, Self::Error> {
         debug!("Estimating fee for FrostMessage: {:?}", msg.id);
 
@@ -647,12 +549,6 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     /// Get the current status of a submitted message
-    /// 
-    /// # Arguments
-    /// * `id` - Unique identifier of the message
-    /// 
-    /// # Returns
-    /// * `Result<MessageStatus, Self::Error>` - Current message status or not found error
     async fn message_status(&self, id: &Uuid) -> Result<MessageStatus, Self::Error> {
         trace!("Checking status for message: {}", id);
         
@@ -684,9 +580,6 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     /// Perform health check on the adapter and underlying connection
-    /// 
-    /// # Returns
-    /// * `Result<(), Self::Error>` - Success or health check failure
     async fn health_check(&self) -> Result<(), Self::Error> {
         debug!("Performing health check");
         
@@ -723,6 +616,5 @@ impl ChainAdapter for SolanaAdapter {
 impl Drop for SolanaAdapter {
     fn drop(&mut self) {
         info!("SolanaAdapter shutting down after {:?} uptime", self.start_time.elapsed());
-        // Cannot log message cache size here: async lock cannot be awaited in Drop
     }
 }

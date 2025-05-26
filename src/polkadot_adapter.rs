@@ -1,67 +1,4 @@
-//! # PolkadotAdapter: Frostgate's ChainAdapter for Polkadot/Substrate Chains
-//!
-//! This module provides a robust, production-ready implementation of the ChainAdapter trait
-//! for Polkadot and Substrate-compatible blockchains using the subxt library. It handles 
-//! cross-chain message passing, proof verification, and transaction management with 
-//! comprehensive error handling, retry logic, and monitoring capabilities.
-//!
-//! ## Features
-//!
-//! - **Robust Error Handling**: Comprehensive error categorization and recovery strategies
-//! - **Connection Management**: Automatic reconnection with exponential backoff
-//! - **Fee Optimization**: Dynamic fee estimation with network surge protection
-//! - **Event Monitoring**: Real-time substrate event listening with filtering
-//! - **Finality Tracking**: Configurable confirmation requirements for different networks
-//! - **Health Monitoring**: Continuous chain health assessment with metrics
-//! - **Rate Limiting**: Built-in request throttling to prevent RPC overload
-//! - **Metrics & Observability**: Comprehensive logging and performance tracking
-//! - **Transaction Lifecycle**: Complete message lifecycle management from submission to finalization
-//!
-//! ## Architecture
-//!
-//! The adapter operates as a bridge between the Frostgate protocol and Substrate-based
-//! chains, managing the complete lifecycle of cross-chain messages with robust error
-//! handling and monitoring.
-//!
-//! ```text
-//! ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-//! │   Frostgate     │───▶│ PolkadotAdapter  │───▶│ Substrate Chain │
-//! │   Protocol      │    │                  │    │   (Polkadot,    │
-//! │                 │◀───│  - Tx Management │◀───│    Kusama,      │
-//! └─────────────────┘    │  - Event Listen  │    │    Parachains)  │
-//!                        │  - Proof Verify  │    └─────────────────┘
-//!                        │  - Health Monitor│
-//!                        └──────────────────┘
-//! ```
-//!
-//! ## Usage Example
-//!
-//! ```rust
-//! use polkadot_adapter::{PolkadotAdapter, PolkadotConfig};
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let config = PolkadotConfig {
-//!         rpc_url: "wss://rpc.polkadot.io".to_string(),
-//!         signer_seed: "//Alice".to_string(),
-//!         confirmations: Some(12),
-//!         rpc_timeout: Some(Duration::from_secs(30)),
-//!         max_concurrent_requests: Some(10),
-//!         health_check_interval: Some(Duration::from_secs(30)),
-//!     };
-//!     
-//!     let adapter = PolkadotAdapter::new(config).await?;
-//!     
-//!     // Submit a cross-chain message
-//!     let message = FrostMessage::new(/* ... */);
-//!     let tx_hash = adapter.submit_message(&message).await?;
-//!     
-//!     // Monitor for finality
-//!     adapter.wait_for_finality(&block_number).await?;
-//!     
-//!     Ok(())
-//! }
-//! ```
+// PolkadotAdapter: Frostgate's ChainAdapter for Polkadot/Substrate Chains
 
 use frostgate_sdk::chainadapter::{
     ChainAdapter, FrostMessage, AdapterError, MessageEvent, MessageStatus,
@@ -86,10 +23,6 @@ use tokio::sync::{RwLock, Mutex, Semaphore};
 use tokio::time::{sleep, timeout, interval, MissedTickBehavior};
 use tracing::{info, warn, error, debug, instrument, span, Level};
 use serde::{Deserialize, Serialize};
-
-// =============================================================================
-// CONSTANTS & CONFIGURATION
-// =============================================================================
 
 /// Default number of confirmations required for Substrate finality
 const DEFAULT_CONFIRMATIONS: u32 = 12;
@@ -123,10 +56,6 @@ const SUBSTRATE_BLOCK_TIME: Duration = Duration::from_secs(6);
 
 /// Maximum number of failed health checks before marking as unhealthy
 const MAX_CONSECUTIVE_HEALTH_FAILURES: u32 = 5;
-
-// =============================================================================
-// CONFIGURATION STRUCTURES
-// =============================================================================
 
 /// Configuration for the PolkadotAdapter
 ///
@@ -187,10 +116,6 @@ pub struct ChainSpecificConfig {
     /// Custom RPC methods or endpoints
     pub custom_rpc_methods: Option<HashMap<String, String>>,
 }
-
-// =============================================================================
-// HEALTH & METRICS STRUCTURES
-// =============================================================================
 
 /// Comprehensive health metrics for monitoring adapter performance
 ///
@@ -278,15 +203,7 @@ enum TxTrackingStatus {
     Unknown,
 }
 
-// =============================================================================
-// MAIN ADAPTER IMPLEMENTATION
-// =============================================================================
-
-/// Production-grade Polkadot/Substrate chain adapter
-///
-/// This adapter provides a robust interface to Substrate-based blockchains,
-/// handling all aspects of cross-chain message lifecycle management with
-/// comprehensive error handling, monitoring, and recovery capabilities.
+/// Polkadot/Substrate chain adapter
 pub struct PolkadotAdapter {
     /// Subxt client for blockchain interaction
     client: Arc<OnlineClient<SubxtPolkadotConfig>>,
@@ -325,35 +242,6 @@ impl fmt::Debug for PolkadotAdapter {
 
 impl PolkadotAdapter {
     /// Creates a new PolkadotAdapter instance
-    ///
-    /// This constructor establishes the connection to the Substrate chain,
-    /// initializes all internal state, and starts background monitoring tasks.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Configuration parameters for the adapter
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Self, AdapterError>` - The initialized adapter or an error
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// let config = PolkadotConfig {
-    ///     rpc_url: "wss://rpc.polkadot.io".to_string(),
-    ///     signer_seed: "//Alice".to_string(),
-    ///     confirmations: Some(12),
-    ///     rpc_timeout: Some(Duration::from_secs(30)),
-    ///     max_concurrent_requests: Some(10),
-    ///     health_check_interval: Some(Duration::from_secs(30)),
-    ///     min_call_interval: None,
-    ///     message_pallet: None,
-    ///     chain_specific: None,
-    /// };
-    /// 
-    /// let adapter = PolkadotAdapter::new(config).await?;
-    /// ```
     #[instrument(level = "info", skip(config))]
     pub async fn new(config: PolkadotConfig) -> Result<Self, AdapterError> {
         let span = span!(Level::INFO, "polkadot_adapter_init");
@@ -522,27 +410,6 @@ impl PolkadotAdapter {
     }
     
     /// Executes an RPC call with comprehensive error handling and retry logic
-    ///
-    /// This method wraps all RPC operations with:
-    /// - Rate limiting to prevent overwhelming the RPC endpoint
-    /// - Exponential backoff retry strategy
-    /// - Timeout handling
-    /// - Metrics collection
-    /// - Concurrent request limiting
-    ///
-    /// # Type Parameters
-    ///
-    /// * `T` - Return type of the operation
-    /// * `F` - Closure type that creates the future
-    /// * `Fut` - Future type returned by the closure
-    ///
-    /// # Arguments
-    ///
-    /// * `operation` - Closure that creates the RPC operation future
-    ///
-    /// # Returns
-    ///
-    /// * `Result<T, AdapterError>` - The operation result or error
     #[instrument(level = "debug", skip(self, operation))]
     async fn execute_rpc_call<T, F, Fut>(&self, mut operation: F) -> Result<T, AdapterError>
     where
@@ -732,10 +599,6 @@ impl PolkadotAdapter {
     }
 }
 
-// =============================================================================
-// CHAINADAPTER TRAIT IMPLEMENTATION
-// =============================================================================
-
 #[async_trait]
 impl ChainAdapter for PolkadotAdapter {
     type BlockId = u32;
@@ -743,13 +606,6 @@ impl ChainAdapter for PolkadotAdapter {
     type Error = AdapterError;
 
     /// Retrieves the latest finalized block number
-    ///
-    /// This method fetches the most recent block header from the chain,
-    /// which represents the current head of the canonical chain.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Self::BlockId, Self::Error>` - Latest block number or error
     #[instrument(level = "debug", skip(self))]
     async fn latest_block(&self) -> Result<Self::BlockId, Self::Error> {
         debug!("Fetching latest block number");
@@ -778,14 +634,6 @@ impl ChainAdapter for PolkadotAdapter {
     /// Note: Substrate chains don't have direct transaction lookup by hash
     /// like EVM chains. This would typically require indexing or using
     /// a block explorer API.
-    ///
-    /// # Arguments
-    ///
-    /// * `tx` - Transaction hash to look up
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Option<Vec<u8>>, Self::Error>` - Transaction data or None if not found
     #[instrument(level = "debug", skip(self))]
     async fn get_transaction(&self, tx: &Self::TxId) -> Result<Option<Vec<u8>>, Self::Error> {
         debug!("Looking up transaction: {:?}", tx);
@@ -806,14 +654,6 @@ impl ChainAdapter for PolkadotAdapter {
     ///
     /// This method polls the chain until the specified block has received
     /// the required number of confirmations as configured in the adapter.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - Block number to wait for finality
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), Self::Error>` - Success or timeout/error
     #[instrument(level = "debug", skip(self))]
     async fn wait_for_finality(&self, block: &Self::BlockId) -> Result<(), Self::Error> {
         let confirmations = self.config.confirmations.unwrap_or(DEFAULT_CONFIRMATIONS);
@@ -876,14 +716,6 @@ impl ChainAdapter for PolkadotAdapter {
     /// This method constructs and submits the appropriate extrinsic for
     /// cross-chain message passing, tracking the transaction through
     /// its lifecycle.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The FrostMessage to submit
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Self::TxId, Self::Error>` - Transaction hash or error
     #[instrument(level = "info", skip(self, msg))]
     async fn submit_message(&self, msg: &FrostMessage) -> Result<Self::TxId, Self::Error> {
         info!("Submitting message with ID: {}", msg.id);
@@ -936,10 +768,6 @@ impl ChainAdapter for PolkadotAdapter {
     ///
     /// This method subscribes to Substrate events and filters for
     /// cross-chain messaging events that are relevant to the Frostgate protocol.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Vec<MessageEvent>, Self::Error>` - List of message events or error
     #[instrument(level = "debug", skip(self))]
     async fn listen_for_events(&self) -> Result<Vec<MessageEvent>, Self::Error> {
         debug!("Listening for cross-chain message events");
@@ -982,14 +810,6 @@ impl ChainAdapter for PolkadotAdapter {
     ///
     /// This method checks the chain state to verify that a message
     /// has been correctly processed and any required proofs are valid.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The FrostMessage to verify
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), Self::Error>` - Success or verification error
     #[instrument(level = "debug", skip(self, msg))]
     async fn verify_on_chain(&self, msg: &FrostMessage) -> Result<(), Self::Error> {
         debug!("Verifying message on-chain: {}", msg.id);
@@ -1033,14 +853,6 @@ impl ChainAdapter for PolkadotAdapter {
     ///
     /// This method calculates the estimated fee for submitting a cross-chain
     /// message based on current network conditions and message complexity.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The FrostMessage to estimate fees for
-    ///
-    /// # Returns
-    ///
-    /// * `Result<u128, Self::Error>` - Estimated fee in chain's native token or error
     #[instrument(level = "debug", skip(self, msg))]
     async fn estimate_fee(&self, msg: &FrostMessage) -> Result<u128, Self::Error> {
         debug!("Estimating fee for message: {}", msg.id);
@@ -1081,14 +893,6 @@ impl ChainAdapter for PolkadotAdapter {
     ///
     /// This method checks the current processing status of a message
     /// that has been submitted to the chain.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The message ID to check status for
-    ///
-    /// # Returns
-    ///
-    /// * `Result<MessageStatus, Self::Error>` - Current message status or error
     #[instrument(level = "debug", skip(self))]
     async fn message_status(&self, id: &Uuid) -> Result<MessageStatus, Self::Error> {
         debug!("Checking status for message: {}", id);
@@ -1136,10 +940,6 @@ impl ChainAdapter for PolkadotAdapter {
     /// This method verifies that the adapter is functioning correctly
     /// by testing connectivity, checking recent performance, and
     /// validating configuration.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), Self::Error>` - Success if healthy, error otherwise
     #[instrument(level = "info", skip(self))]
     async fn health_check(&self) -> Result<(), Self::Error> {
         info!("Performing comprehensive health check");
@@ -1194,24 +994,11 @@ impl ChainAdapter for PolkadotAdapter {
     }
 }
 
-// =============================================================================
-// HELPER METHODS AND UTILITIES
-// =============================================================================
-
 impl PolkadotAdapter {
     /// Tracks the progress of a submitted transaction
     ///
     /// This method would monitor transaction progress through various states
     /// and update internal tracking accordingly.
-    ///
-    /// # Arguments
-    ///
-    /// * `message_id` - ID of the message being tracked
-    /// * `tx_progress` - Transaction progress stream from subxt
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), AdapterError>` - Success or tracking error
     async fn track_transaction_progress(
         &self,
         message_id: Uuid,
@@ -1325,10 +1112,6 @@ impl PolkadotAdapter {
     }
 }
 
-// =============================================================================
-// CLEANUP AND SHUTDOWN
-// =============================================================================
-
 impl Drop for PolkadotAdapter {
     fn drop(&mut self) {
         info!("PolkadotAdapter is being dropped - cleaning up resources");
@@ -1336,10 +1119,7 @@ impl Drop for PolkadotAdapter {
     }
 }
 
-// =============================================================================
-// TESTS
-// =============================================================================
-
+// Tests Module For Frostgate-Polkadot
 #[cfg(test)]
 mod tests {
     use super::*;
