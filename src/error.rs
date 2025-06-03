@@ -1,4 +1,5 @@
 use thiserror::Error;
+use frostgate_icap::chainadapter::AdapterError;
 use uuid::Uuid;
 
 #[derive(Error, Debug)]
@@ -7,7 +8,7 @@ pub enum RelayerError {
     MessageNotFound(Uuid),
 
     #[error("Chain adapter error: {0}")]
-    ChainAdapter(#[from] frostgate_icap::AdapterError),
+    ChainAdapter(#[from] AdapterError),
 
     #[error("Prover error: {0}")]
     Prover(String),
@@ -18,7 +19,7 @@ pub enum RelayerError {
     #[error("Queue error: {0}")]
     Queue(String),
 
-    #[error("Message validation failed: {0}")]
+    #[error("Message validation error: {0}")]
     ValidationError(String),
 
     #[error("Timeout waiting for {operation} after {seconds} seconds")]
@@ -26,6 +27,9 @@ pub enum RelayerError {
         operation: String,
         seconds: u64,
     },
+
+    #[error("Unknown error: {0}")]
+    Unknown(String),
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),

@@ -1,3 +1,9 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_must_use)]
+#![allow(dead_code)]
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -49,9 +55,10 @@ impl MessageQueue {
     pub async fn update_status(&self, id: Uuid, status: MessageStatus, error: Option<String>) {
         let mut messages = self.messages.write().await;
         if let Some(msg) = messages.get_mut(&id) {
+            let is_failed = matches!(status, MessageStatus::Failed(_));
             msg.status = status;
             msg.last_error = error;
-            if matches!(status, MessageStatus::Failed(_)) {
+            if is_failed {
                 msg.attempts += 1;
             }
         }

@@ -1,3 +1,9 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_must_use)]
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
@@ -5,12 +11,18 @@ use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use frostgate_icap::{ChainAdapter, AdapterError};
-use frostgate_sdk::frostmessage::{FrostMessage, MessageEvent};
+use frostgate_icap::chainadapter::{ChainAdapter, AdapterError};
+use frostgate_sdk::frostmessage::{FrostMessage, MessageEvent, ChainId};
 
 use crate::queue::MessageQueue;
 use crate::types::{MessageStatus, QueuedMessage, RelayerConfig};
 use crate::error::RelayerError;
+
+type DynChainAdapter = dyn ChainAdapter<
+    Error = AdapterError,
+    BlockId = String,
+    TxId = String
+> + Send + Sync;
 
 /// Main relayer service that handles cross-chain message propagation
 pub struct RelayerService {
@@ -21,10 +33,10 @@ pub struct RelayerService {
     config: RelayerConfig,
     
     /// Source chain adapter
-    source_chain: Arc<dyn ChainAdapter>,
+    source_chain: Arc<DynChainAdapter>,
     
     /// Destination chain adapter
-    dest_chain: Arc<dyn ChainAdapter>,
+    dest_chain: Arc<DynChainAdapter>,
     
     /// Whether the service is running
     running: Arc<RwLock<bool>>,
@@ -34,8 +46,8 @@ impl RelayerService {
     /// Create a new relayer service
     pub fn new(
         config: RelayerConfig,
-        source_chain: Arc<dyn ChainAdapter>,
-        dest_chain: Arc<dyn ChainAdapter>,
+        source_chain: Arc<DynChainAdapter>,
+        dest_chain: Arc<DynChainAdapter>,
     ) -> Self {
         Self {
             queue: Arc::new(MessageQueue::new()),
@@ -105,7 +117,7 @@ impl RelayerService {
     /// Watch the source chain for new messages
     async fn watch_chain(
         queue: &MessageQueue,
-        source_chain: &Arc<dyn ChainAdapter>,
+        source_chain: &Arc<DynChainAdapter>,
     ) -> Result<(), RelayerError> {
         debug!("Watching chain for new messages");
         
@@ -153,8 +165,8 @@ impl RelayerService {
     async fn process_messages(
         queue: &MessageQueue,
         config: &RelayerConfig,
-        source_chain: &Arc<dyn ChainAdapter>,
-        dest_chain: &Arc<dyn ChainAdapter>,
+        source_chain: &Arc<DynChainAdapter>,
+        dest_chain: &Arc<DynChainAdapter>,
     ) -> Result<(), RelayerError> {
         // Get next message to process
         if let Some(msg) = queue.dequeue().await {
@@ -212,12 +224,12 @@ impl RelayerService {
         // TODO: Implement proper message validation
         // For now, just do basic checks
         
-        if message.source_chain.is_empty() {
-            return Err(RelayerError::ValidationError("Source chain is empty".into()));
+        if message.from_chain == ChainId::Unknown {
+            return Err(RelayerError::ValidationError("Source chain is unknown".into()));
         }
 
-        if message.target_chain.is_empty() {
-            return Err(RelayerError::ValidationError("Target chain is empty".into()));
+        if message.to_chain == ChainId::Unknown {
+            return Err(RelayerError::ValidationError("Target chain is unknown".into()));
         }
 
         if message.payload.is_empty() {

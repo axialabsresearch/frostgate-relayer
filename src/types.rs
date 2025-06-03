@@ -1,3 +1,9 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_must_use)]
+#![allow(dead_code)]
+
 use frostgate_sdk::frostmessage::FrostMessage;
 use std::time::SystemTime;
 use uuid::Uuid;
