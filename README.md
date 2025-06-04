@@ -1,2 +1,1 @@
-# Frostgate Relayer
-Listens to source-chain events via a chain adapter, invokes the prover mechanism on each event (generating a proof), and then formats and sends a `Message` (payload + proof) to the destination chain via its adapter
+# Frostgate's Relayer Service
