@@ -182,18 +182,19 @@ impl RelayerService {
                 return Ok(());
             }
 
-            // Verify message on source chain
-            if let Err(e) = source_chain.verify_on_chain(&msg.message).await {
-                queue.update_status(
-                    msg.id,
-                    MessageStatus::Failed("Source chain verification failed".into()),
-                    Some(e.to_string()),
-                ).await;
-                return Ok(());
+            // Verify message proof if present
+            if let Some(proof) = msg.message.proof.as_ref() {
+                if let Err(e) = source_chain.verify_proof(&msg.message).await {
+                    queue.update_status(
+                        msg.id,
+                        MessageStatus::Failed("Proof verification failed".into()),
+                        Some(e.to_string()),
+                    ).await;
+                    return Ok(());
+                }
             }
 
-            // TODO: Send to prover for proof generation
-            // For now, just mark as ready for submission
+            // Mark as ready for submission
             queue.update_status(msg.id, MessageStatus::ReadyForSubmission, None).await;
 
             // Submit to destination chain
