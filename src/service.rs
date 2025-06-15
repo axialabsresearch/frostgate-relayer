@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use frostgate_icap::chainadapter::{ChainAdapter, AdapterError};
-use frostgate_sdk::frostmessage::{FrostMessage, MessageEvent, ChainId};
+use frostgate_sdk::message::{FrostMessage, MessageEvent, ChainId};
 
 use crate::queue::MessageQueue;
 use crate::types::{MessageStatus, QueuedMessage, RelayerConfig};
